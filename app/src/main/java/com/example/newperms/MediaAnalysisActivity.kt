@@ -17,20 +17,13 @@ class MediaAnalysisActivity : Activity() {
         outputTextView = findViewById(R.id.output_text)
 
         // Display Media Analysis
-        outputTextView.text = getMediaFilesSize()
-    }
+        val mediaDetails = StringBuilder()
+        mediaDetails.append("Pictures: ${getTotalSize(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) / (1024 * 1024)} MB\n")
+        mediaDetails.append("Videos: ${getTotalSize(MediaStore.Video.Media.EXTERNAL_CONTENT_URI) / (1024 * 1024)} MB\n")
+        mediaDetails.append("Documents:\n")
+        mediaDetails.append(getDocumentsDetails())
 
-    private fun getMediaFilesSize(): String {
-        val mediaStats = StringBuilder()
-        val totalPicsSize = getTotalSize(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        val totalVideosSize = getTotalSize(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-        val totalDocsSize = getTotalSize(MediaStore.Files.getContentUri("external"))
-
-        mediaStats.append("Pictures: ${totalPicsSize / (1024 * 1024)} MB\n")
-        mediaStats.append("Videos: ${totalVideosSize / (1024 * 1024)} MB\n")
-        mediaStats.append("Documents: ${totalDocsSize / (1024 * 1024)} MB\n")
-
-        return mediaStats.toString()
+        outputTextView.text = mediaDetails.toString()
     }
 
     private fun getTotalSize(uri: android.net.Uri): Long {
@@ -45,5 +38,56 @@ class MediaAnalysisActivity : Activity() {
             }
         }
         return totalSize
+    }
+
+    private fun getDocumentsDetails(): String {
+        val documentDetailsList = mutableListOf<Triple<String, Long, String>>() // List of (Name, Size, Type)
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.MIME_TYPE
+        )
+
+        // Query for document files
+        val selection = "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " +
+                "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " +
+                "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ?"
+        val selectionArgs = arrayOf("application/pdf", "application/msword", "application/vnd.ms-excel")
+
+        val cursor: Cursor? = contentResolver.query(
+            MediaStore.Files.getContentUri("external"),
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )
+
+        cursor?.use {
+            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+            val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+            val typeIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(nameIndex)
+                val size = cursor.getLong(sizeIndex)
+                val type = cursor.getString(typeIndex)
+                documentDetailsList.add(Triple(name, size, type))
+            }
+        }
+
+        // Sort documents by size in descending order
+        documentDetailsList.sortByDescending { it.second }
+
+        // Build the output string
+        val documentDetails = StringBuilder()
+        for ((name, size, type) in documentDetailsList) {
+            documentDetails.append("Name: $name\nSize: ${size / (1024 * 1024)} MB\nType: $type\n\n")
+        }
+
+        return if (documentDetails.isNotEmpty()) {
+            documentDetails.toString()
+        } else {
+            "No documents found.\n"
+        }
     }
 }
