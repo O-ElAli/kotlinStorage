@@ -28,13 +28,20 @@ class MediaAnalysisActivity : Activity() {
 
     private fun getTotalSize(uri: android.net.Uri): Long {
         var totalSize: Long = 0
-        val projection = arrayOf(MediaStore.MediaColumns.SIZE)
+        val projection = arrayOf(MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DISPLAY_NAME)
 
         val cursor: Cursor? = contentResolver.query(uri, projection, null, null, null)
         cursor?.use {
             val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+
             while (cursor.moveToNext()) {
-                totalSize += cursor.getLong(sizeIndex)
+                val fileSize = cursor.getLong(sizeIndex)
+                val fileName = cursor.getString(nameIndex)
+                totalSize += fileSize
+
+                // Log file details for debugging
+                android.util.Log.d("MediaFile", "Name: $fileName, Size: $fileSize")
             }
         }
         return totalSize
@@ -48,11 +55,13 @@ class MediaAnalysisActivity : Activity() {
             MediaStore.Files.FileColumns.MIME_TYPE
         )
 
-        // Query for document files
+        // Query for specific document MIME types
         val selection = "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " +
                 "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ? OR " +
                 "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ?"
         val selectionArgs = arrayOf("application/pdf", "application/msword", "application/vnd.ms-excel")
+
+        var totalSize: Long = 0
 
         val cursor: Cursor? = contentResolver.query(
             MediaStore.Files.getContentUri("external"),
@@ -71,15 +80,25 @@ class MediaAnalysisActivity : Activity() {
                 val name = cursor.getString(nameIndex)
                 val size = cursor.getLong(sizeIndex)
                 val type = cursor.getString(typeIndex)
-                documentDetailsList.add(Triple(name, size, type))
+
+                // Only include files with valid size
+                if (size > 0) {
+                    totalSize += size
+                    documentDetailsList.add(Triple(name, size, type))
+                }
             }
         }
 
-        // Sort documents by size in descending order
+        // Sort by size in descending order
         documentDetailsList.sortByDescending { it.second }
 
         // Build the output string
         val documentDetails = StringBuilder()
+
+        // Add total size at the top
+        documentDetails.append("Documents Total Size: ${totalSize / (1024 * 1024)} MB\n\n")
+
+        // Add details for each file
         for ((name, size, type) in documentDetailsList) {
             documentDetails.append("Name: $name\nSize: ${size / (1024 * 1024)} MB\nType: $type\n\n")
         }
@@ -90,4 +109,6 @@ class MediaAnalysisActivity : Activity() {
             "No documents found.\n"
         }
     }
+
+
 }
